@@ -15,16 +15,20 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Run inference for all models for the chimera data')
     parser.add_argument('--input', '-i', type=str, 
                         required=False,
-                        default='./data/2025_Chimera/images/',
+                        default='./path_to_chimera_data/',
                         help='path to data, each patient, one folder, with key words, t2 and adc in filename')
     parser.add_argument('--output', '-o', type=str,
-                        default='./data/gene_inference/',
+                        default='./results/chimera',
                         required=False, 
                         help='folder where to put all the results')
     parser.add_argument('--proba_threshold', '-p', type=float,
                         default=0.5,
                         required=False, 
                         help='what probability to use to threshold the output')
+    parser.add_argument('--process_all', '-a', type=bool,
+                        default=False,
+                        required=False, 
+                        help='should all cases be processed? Default: False')
     args = parser.parse_args()
 
 
@@ -32,10 +36,10 @@ if __name__=="__main__":
     ## trained nnUnet Models 
     ######
     model_paths = {'csPCA':"models/Dataset202_BxMR_withRegions_T2_ADC/nnUNetTrainer__nnUNetPlans__3d_fullres/",
-                  'aggInd':"models/Dataset203_CaAggInd_i4ch_oIndAggCh_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres/",
-                  'KI67':"models/Dataset361_12342_MKI67_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres",
-                  'Metastasis':"models/Dataset309_Decipher_som_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres"
-                  }
+                       'aggInd':"models/Dataset203_CaAggInd_i4ch_oIndAggCh_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres/",
+                       'KI67':"models/Dataset361_12342_MKI67_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres",
+                       'Metastasis':"models/Dataset309_Decipher_som_fold0/nnUNetTrainer_100epochs__nnUNetPlans__3d_fullres"
+                      }
     ### check if they exist
     if not os.path.exists('models'):
         print("Can't find the models. Please create the folder 'models', to includes the trained models")
@@ -59,8 +63,12 @@ if __name__=="__main__":
     csv_file = open(csv_path, "w", newline="")
     writer = None
 
-    for case in cases:
-        print("**** Processing", case)
+    for idx, case in enumerate(cases):
+        if not args.process_all and idx > 2:
+            print("Done processing 3, exiting now as option to process all is false. \n",
+                  "if you want to process all cases, then use flag -a or --process_all.")
+            break
+        print("**** Processing", idx, " - id: ", case)
         outpath = os.path.join(args.output, case)
         if os.path.exists(outpath):
             print("Skipping processed case", case)
