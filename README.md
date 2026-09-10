@@ -10,6 +10,10 @@ Approach summarized here:
 
 # How to run
 
+## get the code
+
+`git clone https://github.com/pimed/pares.git`
+
 ## Download the model weights (only needed once)
 
 The models will be made available upon manuscript acceptance [here](https://stanfordmedicine.box.com/s/95a0n0jfxz8ksizylv4puf75bw177esx). 
@@ -22,8 +26,11 @@ Please send a data access request to [mrusu@stanford.edu](mailto:mrusu@stanford.
 
 `cp path\to\models\*.tgz models` or `$ cp path\to\models\*.tar models` 
 
-`tar -xvzf Dataset202.tar; tar -xvzf Dataset203.tar; tar -xvzf Dataset361.tar; tar -xvzf Dataset309.tar; cd ../`
+`tar -xvzf Dataset202.tar; tar -xvzf Dataset203.tar; tar -xvzf Dataset361.tar; tar -xvzf Dataset309.tar; cd ../` 
 
+or
+
+`tar -xvzf Dataset202.tgz; tar -xvzf Dataset203.tgz; tar -xvzf Dataset361.tgz; tar -xvzf Dataset309.tgz; cd ../`
 
 ## Create and prepare enviroment
 
@@ -35,24 +42,31 @@ Please send a data access request to [mrusu@stanford.edu](mailto:mrusu@stanford.
 
 `pip install -r requirements.txt`
 
+
+
+
 ## Execute unit test
 
 `$python test_one_case.py`
 
 ## Expected features for unit test
 
-Features computed from the different regions
+Features computed from the different regions:
 
 pro : 43736.438<br>
 csp :  7306.848<br>
-agg :  8186.184<br>
-prf :  4884.624<br>
-met :  3611.952<br>
-hi3 :  2465.640<br>
-hi1 :  8205.948<br>
-ind :   749.088<br>
-cln :   740.988<br>
+agg : 10298.341<br>
+prf :  6382.152<br>
+met :  5588.352<br>
+hi3 :  3859.812<br>
+hi1 :  9194.473<br>
+ind :  1423.980<br>
+cln :  1362.744<br>
 
+
+values can be off by 1-2 $mm^3$. 
+
+Features computed from the different regions
 
 If you obtained these results, then the code run succesfully, and you can run either the entire chimera data using file `test_chimera.py` or your data. 
 
@@ -78,7 +92,6 @@ Output region abbreviations:
 ## Postprocessing or filtering - indicated by "\_f\_" in the filename
 
 To reduce false positives in the aggressive labels predictions, we filter the results using the csPCA labels where are trained with a lot larger and more diverse dataset. Filtering is basic, including checking whether these is at lease 1\% overlab between a predicted aggressive label and the a predicted clinically sifnificant cancer label. 
-
 
 
 # FAQ
