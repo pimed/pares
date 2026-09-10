@@ -94,6 +94,15 @@ Output region abbreviations:
 To reduce false positives in the aggressive labels predictions, we filter the results using the csPCA labels where are trained with a lot larger and more diverse dataset. Filtering is basic, including checking whether these is at lease 1\% overlab between a predicted aggressive label and the a predicted clinically sifnificant cancer label. 
 
 
+# Getting patient level biochemical reccurence and extraprostatic extension
+
+These models are based on random forest and require psa values, thereby they are needed as input. For the Chimera data they can generate using the code below and option -c (clinical variables)
+
+`python test_chimera.py -i /path_to/Chimera/task1/radiology/images -c /path_to/Chimera/task1/clinical_data -o /path_to_pares_chimera_unit_test/ -a`
+
+The values will be output in the stats.csv file along with the threshold used to assess the binary status. 
+
+If option -c is missing, the code will only compute the different volumes, but not the probablity for epe or bcr. 
 # FAQ
 
 1. Why output the prostate probability?
