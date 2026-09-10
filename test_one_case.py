@@ -8,6 +8,7 @@ import SimpleITK as sitk
 import argparse
 import numpy as np
 import torch
+import pickle
 
 from nnunetv2.inference.predict_from_raw_data import nnUNetPredictor
 DEBUG = False
@@ -38,15 +39,6 @@ def run_nnUnet_inference(image_data, data_properties, model_path, folds=(0,)):
             use_folds=folds,
             checkpoint_name="checkpoint_final.pth"
         )
-
-        # 3. Prepare your data in memory
-        #image_data = np.random.rand(1, 100, 100, 100).astype(np.float32)
-        #data_properties = {
-        #    'spacing': [1.0, 1.0, 1.0],
-        #    'orig_spacing': [1.0, 1.0, 1.0],
-        #    # other nnU-Net required metadata props
-        # }
-
    
         # 4. Predict a single numpy array
         predicted_segmentation, proba = predictor.predict_single_npy_array(
@@ -65,21 +57,22 @@ def run_nnUnet_inference(image_data, data_properties, model_path, folds=(0,)):
                     tile_step_size=0.5,
                     use_gaussian=True,
                     use_mirroring=True,
-                    perform_everything_on_device=True, # Set to True for max speed if you have enough VRAM
+                    perform_everything_on_device=False, # Set to True for max speed if you have enough VRAM
                     device=torch.device('mps'), 
                     verbose=False,
                     verbose_preprocessing=False,
                     allow_tqdm=True
                 )
         
-                # 2. Load your model weights
-                # Point this to your nnUNet_results directory where the model was trained
+            # 2. Load your model weights
+            # Point this to your nnUNet_results directory where the model was trained
             predictor.initialize_from_trained_model_folder(
                     model_training_output_dir=model_path,
                     use_folds=folds,
                     checkpoint_name="checkpoint_final.pth"
                 )
 
+            # 4. Predict a single numpy array
             predicted_segmentation, proba = predictor.predict_single_npy_array(
                 image_data, 
                 data_properties, 
@@ -104,14 +97,15 @@ def run_nnUnet_inference(image_data, data_properties, model_path, folds=(0,)):
                         allow_tqdm=True
                     )
             
-                    # 2. Load your model weights
-                    # Point this to your nnUNet_results directory where the model was trained
+                # 2. Load your model weights
+                # Point this to your nnUNet_results directory where the model was trained
                 predictor.initialize_from_trained_model_folder(
                         model_training_output_dir=model_path,
                         use_folds=folds,
                         checkpoint_name="checkpoint_final.pth"
                     )
-
+                
+                # 4. Predict a single numpy array
                 predicted_segmentation, proba = predictor.predict_single_npy_array(
                     image_data, 
                     data_properties, 
@@ -132,6 +126,24 @@ def run_nnUnet_inference(image_data, data_properties, model_path, folds=(0,)):
 
     return (predicted_segmentation, proba)
 
+def get_patient_proba(scaler_path, model_path, feats):
+    """loads and runs the models with the three parameters  """            
+    if not os.path.exists(scaler_path) or not os.path.exists(model_path):
+        print("Couldn't find", scalar_path, " or ", model_path, 
+                ". EPE and BcR can't be computed")
+        return -1, -1 
+        
+    with open(model_path, 'rb') as f:
+        model = pickle.load(f)
+    with open(scaler_path, 'rb') as f:
+        scaler = pickle.load(f)
+
+    print("Succesfully opened random forest model.")
+
+    X       = scaler.transform(feats)
+    y_score = model.predict_proba(X)[:, 1]
+        
+    return y_score
 
 def compute_label_volume(image, label):
     """Returns the volume in mm3 of voxels matching `label` (int or list of ints) in a SimpleITK image."""
@@ -272,7 +284,7 @@ def run_one_case(t2_path, adc_path, out_path, model_paths, case_id, proba_thresh
 
     fn = os.path.join(out_path, case_id+"_csp_label.nii.gz")
     sitk.WriteImage(seg, fn)
-    print("  Done writing clinically significant cancer label (th: 0.5):", fn)
+    print("  Done writing clinically significant cancer label (th: " + str(proba_threshold) + "):", fn)
 
     # prostate proba
     pr_proba_im = sitk.GetImageFromArray(pr_proba)
@@ -280,7 +292,7 @@ def run_one_case(t2_path, adc_path, out_path, model_paths, case_id, proba_thresh
     
     fn = os.path.join(out_path, case_id+"_pro_proba.nii.gz")
     sitk.WriteImage(pr_proba_im, fn)
-    print("  Done writing the prostate proba (th: 0.5):", fn)
+    print("  Done writing the prostate proba (th: " + str(proba_threshold) + "):", fn)
 
 
     csPCa_proba_im = sitk.GetImageFromArray(csPCa_proba)
@@ -288,7 +300,7 @@ def run_one_case(t2_path, adc_path, out_path, model_paths, case_id, proba_thresh
 
     fn = os.path.join(out_path, case_id+ "_csp_proba.nii.gz")
     sitk.WriteImage(csPCa_proba_im, fn)
-    print("  Done writing clinically significant cancer proba (th: 0.5):", fn)
+    print("  Done writing clinically significant cancer proba (th: " + str(proba_threshold) + "):", fn)
 
     ######
     ### Get agg vs indolent from MRI
@@ -517,9 +529,14 @@ if __name__=="__main__":
                         required=False, 
                         help='suffix to add to files')
     parser.add_argument('--proba_threshold', '-p', type=float,
-                        default=0.5,
+                        default=0.1,
                         required=False, 
                         help='what probability to use to threshold the output')
+    parser.add_argument('--psa', '-ps', type=float,
+                        default=8.3,
+                        required=False, 
+                        help='the psa of the patient needed to compute the risk for extraprostatic extension and biochemical reccurence.')
+        
     args = parser.parse_args()
 
     model_paths = {'csPCA':"models/Dataset202_BxMR_withRegions_T2_ADC/nnUNetTrainer__nnUNetPlans__3d_fullres/",
@@ -541,9 +558,50 @@ if __name__=="__main__":
             print("Can't find a model folder: ", model_paths[p])
             exit ()
 
+
+    print("Testing patient level models")
+    # compute the epe probability
+    th_epe = 0.4873275104221620
+    feats = [[43736.438, 8.3, 1362.744]]
+    epe_model_path = os.path.join('models/patient_level/rf2_epe.pkl')        
+    epe_scalar_path = os.path.join('models/patient_level/scaler_epe.pkl')        
+    epe_proba = get_patient_proba(epe_scalar_path, epe_model_path, feats)    
+
+    feats = [[8.3, 3859.812, 6382.152]]
+    # compute bcr probability
+    th_bcr = 0.10545787330199500
+    brc_model_path = os.path.join('models/patient_level/rf2_bcr.pkl')        
+    bcr_scalar_path = os.path.join('models/patient_level/scaler_bcr.pkl')        
+    bcr_proba = get_patient_proba(bcr_scalar_path, brc_model_path, feats)
+
+    print("epe probability:", epe_proba[0], "-> Binary EPE Status: ", float(epe_proba[0])>th_epe, 
+          "\nbcr probability:", bcr_proba[0] ,"-> Binary BRC Status: ", float(bcr_proba[0])>th_bcr)    
+
     stats = run_one_case(args.t2, args.adc, args.output, model_paths, args.case_id, args.proba_threshold)
+
+
 
     if stats is not None:
         print("Features computed from the different regions")
         for s in stats.keys():
             print(f"{s} : {stats[s]:9.3f}")
+
+    print("Testing patient level models")
+    print("epe probability:", epe_proba[0], "-> Binary EPE Status: ", float(epe_proba[0])>th_epe, 
+           "\nbcr_probability:", bcr_proba[0] ,"-> Binary BRC Status: ", float(bcr_proba[0])>th_bcr)    
+    # compute the epe probability
+    th_epe = 0.4873275104221620
+    feats = [[stats['pro'], args.psa, stats['cln']]]
+    epe_model_path = os.path.join('models/patient_level/rf2_epe.pkl')        
+    epe_scalar_path = os.path.join('models/patient_level/scaler_epe.pkl')        
+    epe_proba = get_patient_proba(epe_scalar_path, epe_model_path, feats)    
+
+    feats = [[args.psa, stats['hi3'], stats['prf']]]
+    # compute bcr probability
+    th_bcr = 0.10545787330199500
+    brc_model_path = os.path.join('models/patient_level/rf2_bcr.pkl')        
+    bcr_scalar_path = os.path.join('models/patient_level/scaler_bcr.pkl')        
+    bcr_proba = get_patient_proba(bcr_scalar_path, brc_model_path, feats)
+
+    print("Computed EPE probability:", epe_proba[0], "-> Binary EPE Status: ", float(epe_proba[0])>th_epe, 
+          "\nComputed BRC probability:", bcr_proba[0] ,"-> Binary BRC Status: ", float(bcr_proba[0])>th_bcr)    
